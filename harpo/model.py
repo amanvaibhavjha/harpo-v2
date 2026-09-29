@@ -605,17 +605,12 @@ class HARPOMTv2(nn.Module):
         
         # Move entire model to ensure all submodules are on correct device
         self.base_model = self.base_model.to(target_device)
-        
-        # For DataParallel: all components must be on same device as base model
-        # For DataParallel: all components must be on same device as base model
-        # For Accelerate: each process has its own device
+
+        # All components must be on the same device as the base model.
         target_device = getattr(self, '_target_device', "cuda:0" if device.startswith("cuda") else device)
-        
+
         # Move components to device AND convert to same dtype as base model
         self.bridge = self.bridge.to(target_device, dtype=model_dtype)
-        self.star = self.star.to(target_device, dtype=model_dtype)
-        self.charm = self.charm.to(target_device, dtype=model_dtype)
-        self.maven = self.maven.to(target_device, dtype=model_dtype)
         self.vto_head = self.vto_head.to(target_device, dtype=model_dtype)
         self.recommendation_head = self.recommendation_head.to(target_device, dtype=model_dtype)
         # Omitting these left the towers on CPU while the backbone sat on the
@@ -685,8 +680,6 @@ class HARPOMTv2(nn.Module):
         num_vtos = len(VTO)
         num_domains = len(Domain)
         
-        # For DataParallel: use cuda:0 specifically
-        # For Accelerate: use the process-specific device
         target_device = getattr(self, '_target_device', "cuda:0" if self.device.startswith("cuda") else self.device)
         
         # Use stored dtype (bfloat16 for A100)

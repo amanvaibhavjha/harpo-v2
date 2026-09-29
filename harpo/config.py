@@ -210,17 +210,11 @@ class TrainingConfig:
     warmup_ratio: float = 0.10  # FIXED: Longer warmup for stable convergence
     max_grad_norm: float = 1.0
     
-    # Hardware - optimized for 2x A100 80GB
+    # Hardware
     fp16: bool = False
     bf16: bool = True  # BF16 for A100
     gradient_checkpointing: bool = True  # Enable for 7B model memory efficiency
-    
-    # Acceleration settings
-    use_accelerate: bool = True  # Use HuggingFace Accelerate for multi-GPU
-    dataloader_num_workers: int = 8  # OPTIMIZED: Increased from 4 for better throughput
-    dataloader_pin_memory: bool = True
-    dataloader_prefetch_factor: int = 4  # OPTIMIZED: Added prefetch factor
-    
+
     # Paths
     output_dir: str = "./outputs"
     cache_dir: str = "./cache"

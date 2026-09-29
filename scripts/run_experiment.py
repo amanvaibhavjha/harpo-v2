@@ -107,8 +107,7 @@ def build_model(model_name, device, seq_len, lora_r, train_embeddings, item_bias
                                lora_r=lora_r, lora_alpha=2 * lora_r)
     training_config = TrainingConfig(
         max_seq_length=seq_len, bf16=False, fp16=False,
-        gradient_checkpointing=False, use_accelerate=False,
-        dataloader_num_workers=0)
+        gradient_checkpointing=False)
     training_config.retrieval_config.item_bias = item_bias
 
     model = HARPOMTv2(model_config, training_config)
