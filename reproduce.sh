@@ -10,6 +10,7 @@
 #
 #   OUT=/path/to/out bash reproduce.sh
 #   (detached: setsid nohup bash reproduce.sh > reproduce.log 2>&1 < /dev/null &)
+#   (or edit harpo.env and: source harpo.env && bash reproduce.sh)
 #
 # DATA  converted ReDial: sft_data.json, test_sft.json, movie_list.json (sha256-checked)
 #                                             [data/redial_data.tar.gz, unpacked into OUT/data]

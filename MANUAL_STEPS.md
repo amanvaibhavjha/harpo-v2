@@ -22,35 +22,27 @@ pip install -r requirements.txt
 
 ## 0. Setup
 
+All paths, models and shared flags (`$DATA`, `$CK`, `$M7`, `$S5`, ...) used
+below come from [`harpo.env`](harpo.env) — edit it if you want a different
+`OUT` dir or GPU, then source it once per shell session:
+
 ```bash
-OUT=./harpo_out
-DATA=$OUT/data/redial_data
-RAW=$OUT/redial_raw
-CK=$OUT/checkpoints
-RES=$OUT/results
-AG=$RES/agents
-PROF=$RES/bridge/profiles.json
-M05=Qwen/Qwen2.5-0.5B-Instruct
-M7=Qwen/Qwen2.5-7B-Instruct
-GPU=0
+cd harpo-v2   # repo root
+source harpo.env
+```
 
-mkdir -p "$CK" "$RES/bridge" "$AG" "$OUT/logs"
-export PYTHONUNBUFFERED=1 CUDA_VISIBLE_DEVICES=$GPU
+Then create the output directories and unpack the exact data the published
+numbers came from:
 
-# Unpack the exact data the published numbers came from
-mkdir -p "$OUT/data" && tar -xzf data/redial_data.tar.gz -C "$OUT/data"
+```bash
+mkdir -p "$CK" "$RES/bridge" "$AG" "$OUT/logs" "$OUT/data"
+tar -xzf data/redial_data.tar.gz -C "$OUT/data"
 tar -xzf data/redial_raw.tar.gz -C "$OUT"
 ```
 
-Shared flags used throughout:
-
-```bash
-S5=(--val-fraction 0.05 --charm-fraction 0.0)
-BACKBONE=(--train-size 0 --test-size 0 --catalog-size 100000 --seq-len 256
-           --batch-size 16 --grad-accum 1 --catalog-refresh 250)
-CK7=$CK/7b/checkpoints/sft_final
-READ=$RES/readings_0.json,$RES/readings_1.json
-```
+`source harpo.env` must be re-run in every new shell/terminal tab before any
+command below — the variables (and, importantly, the `$S5`/`$BACKBONE`
+arrays) don't survive across sessions.
 
 ## 1. CHARM stage 1a — a 0.5B retriever, then CHARM warm-started on it
 

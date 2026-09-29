@@ -27,6 +27,10 @@ The data ships in `data/` (see Data below) and is checksummed on every run.
 See the header of `reproduce.sh` for GPUs, models and resuming (about 27 h on
 one A100 80 GB).
 
+Paths, models and GPUs are configured in [`harpo.env`](harpo.env) (edit it,
+or override any variable in your shell before sourcing it); `reproduce.sh`
+picks up the same names.
+
 Prefer to run each stage yourself instead of the shell script (e.g. in a
 `harpo` conda env)? See [MANUAL_STEPS.md](MANUAL_STEPS.md) for the same
 pipeline unrolled into individual commands.
