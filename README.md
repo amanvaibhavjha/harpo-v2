@@ -20,16 +20,21 @@ validation history (`charm_stage2.json`).
 ```bash
 conda create -n harpo python=3.10 -y && conda activate harpo
 pip install -r requirements.txt
+source harpo.env   # 1 GPU by default; edit it first if you have 2 (see below)
 bash reproduce.sh
 ```
 
 The data ships in `data/` (see Data below) and is checksummed on every run.
-See the header of `reproduce.sh` for GPUs, models and resuming (about 27 h on
-one A100 80 GB).
+See the header of `reproduce.sh` for models and resuming (about 27 h on one
+A100 80 GB, 16 h on two).
 
-Paths, models and GPUs are configured in [`harpo.env`](harpo.env) (edit it,
-or override any variable in your shell before sourcing it); `reproduce.sh`
-picks up the same names.
+Paths, models and GPUs are configured in [`harpo.env`](harpo.env). It
+defaults to a single GPU (`GPU0=GPU1=0`, everything sequential). If you have
+two, set `GPU1=1` in `harpo.env` (or `GPU1=1 bash reproduce.sh` on the fly)
+to run two stages in parallel. **If you skip `source harpo.env` and just run
+`bash reproduce.sh` directly, the script uses its own built-in default of
+`GPU1=1`** — i.e. it assumes 2 GPUs and will fail on a single-GPU machine
+trying to use a GPU 1 that doesn't exist.
 
 Prefer to run each stage yourself instead of the shell script (e.g. in a
 `harpo` conda env)? See [MANUAL_STEPS.md](MANUAL_STEPS.md) for the same
