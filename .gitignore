@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+harpo_out/
+outputs/
+*.pt
+*.safetensors
+*.log
+.DS_Store
