@@ -22,10 +22,9 @@ pip install -r requirements.txt
 bash reproduce.sh
 ```
 
-The converted ReDial data ships in `data/redial_data.tar.gz`; the original
-ReDial release (the seeker answers behind CHARM's satisfaction and engagement
-labels) is downloaded on the first run. See the header of `reproduce.sh` for
-GPUs, models and resuming (about 27 h on one A100 80 GB).
+The data ships in `data/` (see Data below) and is checksummed on every run.
+See the header of `reproduce.sh` for GPUs, models and resuming (about 27 h on
+one A100 80 GB).
 
 ## Layout
 
@@ -35,8 +34,17 @@ GPUs, models and resuming (about 27 h on one A100 80 GB).
 
 ## Data
 
-ReDial (Li et al., 2018), released under CC BY 4.0. `data/redial_data.tar.gz` is
-derived from it by `scripts/convert_redial.py`.
+ReDial (Li et al., 2018), released under CC BY 4.0.
+
+- `data/redial_raw.tar.gz`: the original ReDial release (`train_data.jsonl`,
+  `test_data.jsonl`).
+- `data/redial_data.tar.gz`: its conversion by `scripts/convert_redial.py`, the
+  data behind the reported numbers. It is the rule-based conversion
+  (`used_llm: false` in `stats.json`): dialogues, roles and target movies come
+  straight from ReDial; the reasoning annotations in the replies (the operation
+  lists inside `<|think|>`) come from keyword rules. A conversion with
+  GPT-4o-mini-written annotations (same dialogues and targets) exists but was
+  not used for these results.
 
 ## License
 

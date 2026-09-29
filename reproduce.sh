@@ -10,7 +10,7 @@
 #                                             [data/redial_data.tar.gz, unpacked into OUT/data]
 # RAW   the original ReDial release (train_data.jsonl, test_data.jsonl; sha256-checked):
 #       seeker answers for CHARM's satisfaction and engagement labels
-#                                             [downloaded from ReDial's release into OUT/redial_raw]
+#                                             [data/redial_raw.tar.gz, unpacked into OUT]
 # OUT   checkpoints, results, logs            [./harpo_out]
 # M05   Qwen2.5-0.5B-Instruct                  [Qwen/Qwen2.5-0.5B-Instruct]
 # M7    Qwen2.5-7B-Instruct                    [Qwen/Qwen2.5-7B-Instruct]
@@ -46,8 +46,12 @@ check_data() {
     mkdir -p "$OUT/data" && tar -xzf data/redial_data.tar.gz -C "$OUT/data" || return 1
   fi
   if [ ! -f "$RAW/train_data.jsonl" ] || [ ! -f "$RAW/test_data.jsonl" ]; then
-    $PY -c "import sys; sys.path.insert(0, 'scripts')
+    if [ "$RAW" = "$OUT/redial_raw" ] && [ -f data/redial_raw.tar.gz ]; then
+      tar -xzf data/redial_raw.tar.gz -C "$OUT" || return 1
+    else                                        # ReDial's own release
+      $PY -c "import sys; sys.path.insert(0, 'scripts')
 from convert_redial import download_redial_from_github as get; get('$RAW')" || return 1
+    fi
   fi
   sum() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
   while read -r want file; do
