@@ -675,9 +675,6 @@ class HARPOMTv2Trainer:
         components_path = os.path.join(checkpoint_dir, "components.pt")
         torch.save({
             "bridge_state_dict": base_model.bridge.state_dict(),
-            "star_state_dict": base_model.star.state_dict(),
-            "charm_state_dict": base_model.charm.state_dict(),
-            "maven_state_dict": base_model.maven.state_dict(),
             "vto_head_state_dict": base_model.vto_head.state_dict(),
             "recommendation_head_state_dict": base_model.recommendation_head.state_dict(),
             # The retrieval heads produce every ranking score; a checkpoint
@@ -737,9 +734,9 @@ class HARPOMTv2Trainer:
     
     def load_checkpoint(self, checkpoint_path: str):
         """Load checkpoint with trained component weights
-        
-        This loads STAR, CHARM, MAVEN, bridge, vto_head, recommendation_head weights
-        from components.pt. The LoRA adapter is loaded separately in load_base_model.
+
+        This loads bridge, vto_head, recommendation_head weights from
+        components.pt. The LoRA adapter is loaded separately in load_base_model.
         
         Args:
             checkpoint_path: Path to checkpoint directory (e.g., 'outputs/checkpoints/charm_final')
@@ -758,9 +755,6 @@ class HARPOMTv2Trainer:
         # Load each component with error handling
         components = [
             ("bridge", "bridge_state_dict"),
-            ("star", "star_state_dict"),
-            ("charm", "charm_state_dict"),
-            ("maven", "maven_state_dict"),
             ("vto_head", "vto_head_state_dict"),
             ("recommendation_head", "recommendation_head_state_dict"),
         ] + [(name, f"{name}_state_dict") for name in self.RETRIEVAL_COMPONENTS

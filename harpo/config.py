@@ -73,19 +73,6 @@ class Domain(Enum):
 
 
 # ============================================================================
-# AGENT CONFIGURATION (MAVEN)
-# ============================================================================
-
-class AgentRole(Enum):
-    """Agent roles in MAVEN framework."""
-    RECOMMENDER = "recommender"
-    CRITIC = "critic"
-    EXPLAINER = "explainer"
-    USER_SIMULATOR = "user_simulator"
-    ORCHESTRATOR = "orchestrator"
-
-
-# ============================================================================
 # MODEL CONFIGURATION
 # ============================================================================
 
@@ -133,47 +120,6 @@ class ModelConfig:
 
 
 # ============================================================================
-# STAR (Tree-of-Thought) CONFIGURATION
-# ============================================================================
-
-@dataclass
-class STARConfig:
-    """Configuration for STAR reasoning module."""
-    max_depth: int = 3
-    branching_factor: int = 2
-    beam_width: int = 2
-    search_strategy: str = "beam"  # "greedy", "best_first", "beam", "mcts"
-    use_value_network: bool = True
-    value_weight: float = 0.5
-    enable_backtracking: bool = True
-    backtrack_threshold: float = 0.3
-    thought_max_tokens: int = 64
-    temperature: float = 0.7
-    top_p: float = 0.9
-
-
-# ============================================================================
-# CHARM (Preference) CONFIGURATION
-# ============================================================================
-
-@dataclass  
-class CHARMConfig:
-    """Configuration for CHARM preference learning."""
-    beta: float = 0.5  # FIXED: Increased from 0.1 for stronger preference learning
-    reference_free: bool = True  # SimPO-style
-    gamma: float = 0.3  # FIXED: Reduced target margin for smoother optimization
-    length_normalization: bool = True
-    num_reward_heads: int = 4
-    reward_head_names: List[str] = field(default_factory=lambda: [
-        "relevance", "diversity", "user_satisfaction", "engagement"
-    ])
-    meta_learning: bool = True
-    meta_learning_rate: float = 1e-3
-    contrastive_temperature: float = 0.1
-    hard_negative_ratio: float = 0.3
-
-
-# ============================================================================
 # BRIDGE (Domain Adaptation) CONFIGURATION
 # ============================================================================
 
@@ -187,25 +133,6 @@ class BRIDGEConfig:
     domain_confusion_weight: float = 0.1
     use_domain_gates: bool = True
     gate_init: float = 0.5
-
-
-# ============================================================================
-# MAVEN (Multi-Agent) CONFIGURATION
-# ============================================================================
-
-@dataclass
-class MAVENConfig:
-    """Configuration for MAVEN multi-agent framework."""
-    num_agents: int = 3  # Reduced for efficiency
-    agent_roles: List[AgentRole] = field(default_factory=lambda: [
-        AgentRole.RECOMMENDER, AgentRole.CRITIC, AgentRole.EXPLAINER
-    ])
-    max_communication_rounds: int = 2
-    message_max_tokens: int = 64
-    self_play_iterations: int = 2
-    user_simulation_temperature: float = 0.9
-    voting_strategy: str = "weighted"
-    conflict_resolution: str = "orchestrator"
 
 
 # ============================================================================
@@ -299,8 +226,5 @@ class TrainingConfig:
     cache_dir: str = "./cache"
     
     # Module-specific configs
-    star_config: STARConfig = field(default_factory=STARConfig)
-    charm_config: CHARMConfig = field(default_factory=CHARMConfig)
     bridge_config: BRIDGEConfig = field(default_factory=BRIDGEConfig)
-    maven_config: MAVENConfig = field(default_factory=MAVENConfig)
     retrieval_config: RetrievalConfig = field(default_factory=RetrievalConfig)

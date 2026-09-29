@@ -21,10 +21,7 @@ from dataclasses import dataclass
 
 from .pooling import masked_mean_pool
 from .retrieval import CrossEncoderReranker, TwoTowerRetriever
-from .config import (
-    VTO, Domain, AgentRole, ModelConfig, TrainingConfig,
-    STARConfig, CHARMConfig, BRIDGEConfig, MAVENConfig
-)
+from .config import VTO, Domain, ModelConfig, TrainingConfig, BRIDGEConfig
 
 
 @dataclass
@@ -215,340 +212,21 @@ class BRIDGE(nn.Module):
 
 
 # ============================================================================
-# The original STAR, CHARM and MAVEN heads. The retriever never calls them; they
-# are only constructed, because its checkpoints and its random initialisation
-# order include their parameters. (The pipeline's STAR, CHARM and MAVEN are
-# star_search.py, charm_ce.py and maven.py.)
-# ============================================================================
-
-class ValueNetwork(nn.Module):
-    """
-    Value network predicting RECOMMENDATION QUALITY (not just action correctness).
-    
-    Predicts: relevance, diversity, user satisfaction, engagement
-    """
-    
-    def __init__(self, hidden_size: int, num_vtos: int = 24, dropout: float = 0.1):
-        super().__init__()
-        self.hidden_size = hidden_size
-        
-        self.state_encoder = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size),
-            nn.LayerNorm(hidden_size),
-            nn.GELU(),
-            nn.Dropout(dropout)
-        )
-        
-        # Multi-component value (recommendation quality dimensions)
-        self.value_heads = nn.ModuleDict({
-            "relevance": nn.Sequential(
-                nn.Linear(hidden_size, hidden_size // 2),
-                nn.GELU(),
-                nn.Linear(hidden_size // 2, 1),
-                nn.Sigmoid()
-            ),
-            "diversity": nn.Sequential(
-                nn.Linear(hidden_size, hidden_size // 2),
-                nn.GELU(),
-                nn.Linear(hidden_size // 2, 1),
-                nn.Sigmoid()
-            ),
-            "user_satisfaction": nn.Sequential(
-                nn.Linear(hidden_size, hidden_size // 2),
-                nn.GELU(),
-                nn.Linear(hidden_size // 2, 1),
-                nn.Sigmoid()
-            ),
-            "engagement": nn.Sequential(
-                nn.Linear(hidden_size, hidden_size // 2),
-                nn.GELU(),
-                nn.Linear(hidden_size // 2, 1),
-                nn.Sigmoid()
-            )
-        })
-        
-        # Learnable weights for combining
-        self.value_weights = nn.Parameter(torch.tensor([0.35, 0.15, 0.35, 0.15]))
-    
-class ThoughtGenerator(nn.Module):
-    """Generates reasoning steps with VTO predictions"""
-    
-    def __init__(self, hidden_size: int, num_vtos: int = 24, 
-                 max_candidates: int = 3, dropout: float = 0.1):
-        super().__init__()
-        self.hidden_size = hidden_size
-        self.num_vtos = num_vtos
-        self.max_candidates = max_candidates
-        
-        self.context_processor = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size),
-            nn.LayerNorm(hidden_size),
-            nn.GELU(),
-            nn.Dropout(dropout)
-        )
-        
-        # Generate multiple candidates
-        self.candidate_generator = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size * max_candidates),
-            nn.LayerNorm(hidden_size * max_candidates),
-            nn.GELU()
-        )
-        
-        self.vto_predictor = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size // 2),
-            nn.GELU(),
-            nn.Linear(hidden_size // 2, num_vtos)
-        )
-        
-        self.quality_estimator = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size // 2),
-            nn.GELU(),
-            nn.Linear(hidden_size // 2, 1),
-            nn.Sigmoid()
-        )
-    
-class STAR(nn.Module):
-    """
-    STAR: Structured Tree-of-Thought Agentic Reasoning
-    
-    Tree search optimized for RECOMMENDATION QUALITY:
-    - Value network predicts user satisfaction, not just accuracy
-    - Paths evaluated on expected recommendation quality
-    - Backtracking when paths lead to poor recommendations
-    
-    NEW IMPROVEMENTS:
-    - Residual connections for better gradient flow
-    - Uncertainty estimation for robust reasoning
-    - Confidence-weighted path aggregation
-    """
-    
-    def __init__(self, hidden_size: int, config: STARConfig,
-                 num_vtos: int = 24, dropout: float = 0.1):
-        super().__init__()
-        self.hidden_size = hidden_size
-        self.config = config
-        self.num_vtos = num_vtos
-        
-        self.value_network = ValueNetwork(hidden_size, num_vtos, dropout)
-        self.thought_generator = ThoughtGenerator(hidden_size, num_vtos,
-                                                   config.branching_factor, dropout)
-        self.state_transition = nn.GRUCell(hidden_size, hidden_size)
-        
-        # Aggregator for final recommendation
-        self.rec_aggregator = nn.Sequential(
-            nn.Linear(hidden_size * 2, hidden_size),
-            nn.LayerNorm(hidden_size),
-            nn.GELU()
-        )
-        
-        # NEW: Uncertainty estimator for robust reasoning
-        self.uncertainty_head = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size // 4),
-            nn.GELU(),
-            nn.Linear(hidden_size // 4, 1),
-            nn.Sigmoid()  # Outputs uncertainty in [0, 1]
-        )
-        
-        # NEW: Path confidence aggregator
-        self.path_confidence = nn.Sequential(
-            nn.Linear(hidden_size * 2, hidden_size // 2),
-            nn.GELU(),
-            nn.Linear(hidden_size // 2, 1),
-            nn.Sigmoid()
-        )
-        
-        # NEW: Residual gate for controlled information flow
-        self.residual_gate = nn.Sequential(
-            nn.Linear(hidden_size * 2, hidden_size),
-            nn.Sigmoid()
-        )
-    
-class RewardHead(nn.Module):
-    """Individual reward head for one quality dimension
-    
-    FIXED: Now outputs normalized scores in range [-1, 1] via tanh
-    This prevents negative unbounded values during evaluation.
-    """
-    
-    def __init__(self, hidden_size: int, dropout: float = 0.1):
-        super().__init__()
-        self.scorer = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size // 2),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.LayerNorm(hidden_size // 2),
-            nn.Linear(hidden_size // 2, 1),
-            nn.Tanh()  # FIXED: Bound outputs to [-1, 1]
-        )
-    
-class MetaLearner(nn.Module):
-    """Learns to weight reward components based on context and domain"""
-    
-    def __init__(self, hidden_size: int, num_domains: int = 6, 
-                 num_rewards: int = 4, dropout: float = 0.1):
-        super().__init__()
-        self.num_rewards = num_rewards
-        
-        self.domain_embedding = nn.Embedding(num_domains, hidden_size // 4)
-        self.context_encoder = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size // 2),
-            nn.GELU(),
-            nn.Linear(hidden_size // 2, hidden_size // 4)
-        )
-        
-        self.weight_predictor = nn.Sequential(
-            nn.Linear(hidden_size // 2, hidden_size // 4),
-            nn.GELU(),
-            nn.Linear(hidden_size // 4, num_rewards)
-        )
-        
-        self.baseline_weights = nn.Parameter(torch.tensor([0.30, 0.20, 0.30, 0.20]))
-    
-class CHARM(nn.Module):
-    """
-    CHARM: Contrastive Hierarchical Alignment with Reward Marginalization
-    
-    Optimizes for RECOMMENDATION QUALITY through:
-    - Decomposed rewards: relevance, diversity, satisfaction, engagement
-    - Meta-learned weights adapting to domain and context
-    - Adaptive margin for robust preference learning
-    """
-    
-    def __init__(self, hidden_size: int, config: CHARMConfig,
-                 num_vtos: int = 24, num_domains: int = 6, dropout: float = 0.1):
-        super().__init__()
-        self.hidden_size = hidden_size
-        self.config = config
-        self.beta = config.beta
-        
-        self.feature_extractor = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size),
-            nn.LayerNorm(hidden_size),
-            nn.GELU(),
-            nn.Dropout(dropout)
-        )
-        
-        # Hierarchical reward heads (recommendation quality dimensions)
-        self.reward_heads = nn.ModuleDict({
-            "relevance": RewardHead(hidden_size, dropout),
-            "diversity": RewardHead(hidden_size, dropout),
-            "user_satisfaction": RewardHead(hidden_size, dropout),
-            "engagement": RewardHead(hidden_size, dropout)
-        })
-        
-        self.meta_learner = MetaLearner(hidden_size, num_domains, 4, dropout)
-        
-        # Adaptive margin
-        self.margin_net = nn.Sequential(
-            nn.Linear(hidden_size * 2, hidden_size // 2),
-            nn.GELU(),
-            nn.Linear(hidden_size // 2, 1),
-            nn.Sigmoid()
-        )
-        self.base_margin = nn.Parameter(torch.tensor(0.5))
-    
-class AgentModule(nn.Module):
-    """Individual agent in MAVEN framework"""
-    
-    def __init__(self, hidden_size: int, role: AgentRole, dropout: float = 0.1):
-        super().__init__()
-        self.role = role
-        
-        self.encoder = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size),
-            nn.LayerNorm(hidden_size),
-            nn.GELU(),
-            nn.Dropout(dropout)
-        )
-        
-        self.output_head = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size // 2),
-            nn.GELU(),
-            nn.Linear(hidden_size // 2, hidden_size)
-        )
-        
-        self.quality_scorer = nn.Sequential(
-            nn.Linear(hidden_size, 1),
-            nn.Sigmoid()
-        )
-    
-class MAVEN(nn.Module):
-    """
-    MAVEN: Multi-Agent Virtual Environment for Recommendations
-    
-    Multiple specialized agents collaborate for better recommendations:
-    - Recommender: generates candidates
-    - Critic: evaluates quality  
-    - Explainer: provides explanations
-    
-    NEW IMPROVEMENTS:
-    - Attention-based agent weighting for dynamic collaboration
-    - Consensus mechanism for robust predictions
-    - Iterative refinement through agent communication
-    """
-    
-    def __init__(self, hidden_size: int, config: MAVENConfig, dropout: float = 0.1):
-        super().__init__()
-        self.hidden_size = hidden_size
-        self.config = config
-        
-        # Create agents
-        self.agents = nn.ModuleDict({
-            role.value: AgentModule(hidden_size, role, dropout)
-            for role in config.agent_roles
-        })
-        
-        # Orchestrator for combining outputs
-        self.orchestrator = nn.Sequential(
-            nn.Linear(hidden_size * len(config.agent_roles), hidden_size),
-            nn.LayerNorm(hidden_size),
-            nn.GELU(),
-            nn.Linear(hidden_size, hidden_size)
-        )
-        
-        # Agreement scorer
-        self.agreement_scorer = nn.Sequential(
-            nn.Linear(hidden_size * len(config.agent_roles), hidden_size // 2),
-            nn.GELU(),
-            nn.Linear(hidden_size // 2, 1),
-            nn.Sigmoid()
-        )
-        
-        # NEW: Attention-based agent weighting
-        self.agent_attention_query = nn.Linear(hidden_size, hidden_size // 4)
-        self.agent_attention_key = nn.Linear(hidden_size, hidden_size // 4)
-        self.agent_weight_mlp = nn.Sequential(
-            nn.Linear(len(config.agent_roles), len(config.agent_roles) * 2),
-            nn.GELU(),
-            nn.Linear(len(config.agent_roles) * 2, len(config.agent_roles)),
-            nn.Softmax(dim=-1)
-        )
-        
-        # NEW: Consensus mechanism for robust predictions
-        self.consensus_gate = nn.Sequential(
-            nn.Linear(hidden_size * 2, hidden_size),
-            nn.Sigmoid()
-        )
-        
-        # NEW: Iterative refinement layer
-        self.refinement_layer = nn.GRUCell(hidden_size, hidden_size)
-    
-# ============================================================================
 # The retriever's backbone: base LLM + LoRA, BRIDGE, heads, two-tower retrieval
 # ============================================================================
 
 class HARPOMTv2(nn.Module):
     """
-    HARPO-MT v2: Complete Model Architecture
-    
+    HARPO-MT v2: retriever backbone.
+
     Integrates:
-    - Base LLM (Qwen 0.5B for Mac)
-    - BRIDGE: Domain adaptation
-    - STAR: Tree-of-thought reasoning
-    - CHARM: Hierarchical preference learning
-    - MAVEN: Multi-agent collaboration
-    
-    Primary objective: RECOMMENDATION QUALITY
+    - Base LLM + LoRA
+    - BRIDGE: domain adaptation
+    - Two-tower retriever, VTO head, recommendation head
+
+    STAR, CHARM and MAVEN are separate pipeline stages
+    (star_search.py, charm_ce.py, maven.py) that consume this backbone's
+    pooled hidden states; they are not submodules of this class.
     """
     
     def __init__(self, model_config: ModelConfig, training_config: TrainingConfig):
@@ -565,12 +243,8 @@ class HARPOMTv2(nn.Module):
         num_vtos = len(VTO)
         num_domains = len(Domain)
         
-        # Novel components
         self.bridge = BRIDGE(hidden_size, training_config.bridge_config, num_domains, num_vtos)
-        self.star = STAR(hidden_size, training_config.star_config, num_vtos)
-        self.charm = CHARM(hidden_size, training_config.charm_config, num_vtos, num_domains)
-        self.maven = MAVEN(hidden_size, training_config.maven_config)
-        
+
         # VTO prediction head
         self.vto_head = nn.Sequential(
             nn.Linear(hidden_size, hidden_size // 2),
@@ -1028,30 +702,6 @@ class HARPOMTv2(nn.Module):
             print(f"  BRIDGE dimensions match ({hidden_size}), preserving weights")
             self.bridge = self.bridge.to(target_device, dtype=dtype)
         
-        star_hidden = getattr(self.star, 'hidden_size', None)
-        if star_hidden is None or star_hidden != hidden_size:
-            print(f"  Reinitializing STAR: {star_hidden} -> {hidden_size}")
-            self.star = STAR(hidden_size, self.training_config.star_config, num_vtos).to(target_device, dtype=dtype)
-        else:
-            print(f"  STAR dimensions match ({hidden_size}), preserving weights")
-            self.star = self.star.to(target_device, dtype=dtype)
-        
-        charm_hidden = getattr(self.charm, 'hidden_size', None)
-        if charm_hidden is None or charm_hidden != hidden_size:
-            print(f"  Reinitializing CHARM: {charm_hidden} -> {hidden_size}")
-            self.charm = CHARM(hidden_size, self.training_config.charm_config, num_vtos, num_domains).to(target_device, dtype=dtype)
-        else:
-            print(f"  CHARM dimensions match ({hidden_size}), preserving weights")
-            self.charm = self.charm.to(target_device, dtype=dtype)
-        
-        maven_hidden = getattr(self.maven, 'hidden_size', None)
-        if maven_hidden is None or maven_hidden != hidden_size:
-            print(f"  Reinitializing MAVEN: {maven_hidden} -> {hidden_size}")
-            self.maven = MAVEN(hidden_size, self.training_config.maven_config).to(target_device, dtype=dtype)
-        else:
-            print(f"  MAVEN dimensions match ({hidden_size}), preserving weights")
-            self.maven = self.maven.to(target_device, dtype=dtype)
-        
         # VTO head - check input dimension
         vto_input_dim = None
         if hasattr(self.vto_head, '__getitem__') or hasattr(self.vto_head, '__iter__'):
@@ -1119,41 +769,24 @@ class HARPOMTv2(nn.Module):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
     
     def freeze_for_sft(self):
-        """Freeze modules not used during SFT training for DDP compatibility.
-        
-        CRITICAL FIX: Train BRIDGE + recommendation_head + vto_head during SFT!
-        
-        During SFT we train:
-        - base_model (LoRA adapters)
-        - vto_head (VTO prediction)
-        - recommendation_head (for ranking - trained via self-supervised signal)
-        - BRIDGE (domain adaptation - critical for ranking evaluation)
-        
-        We freeze: star, maven, charm (these are trained in later stages)
+        """Enable gradients on the modules trained during SFT.
+
+        base_model (LoRA adapters), vto_head, recommendation_head, BRIDGE
+        and the retrieval heads.
         """
-        # Freeze modules for later stages
-        for param in self.star.parameters():
-            param.requires_grad = False
-        for param in self.maven.parameters():
-            param.requires_grad = False
-        for param in self.charm.parameters():
-            param.requires_grad = False
-        
-        # CRITICAL FIX: Keep these trainable for SFT
         for param in self.vto_head.parameters():
             param.requires_grad = True
         for param in self.recommendation_head.parameters():
             param.requires_grad = True
         for param in self.bridge.parameters():
             param.requires_grad = True
-            
+
         for _mod in (self.retriever, self.item_id_embedding,
                      getattr(self, "item_bias", None), self.reranker):
             if _mod is not None:
                 for param in _mod.parameters():
                     param.requires_grad = True
 
-        print("✓ Frozen STAR, MAVEN, CHARM for SFT stage")
         print("✓ Training: base_model + vto_head + recommendation_head + BRIDGE")
     
     def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor,
