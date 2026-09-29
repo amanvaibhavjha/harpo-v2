@@ -1,0 +1,134 @@
+{
+  "args": {
+    "test_raw": "OUT/results/7b_val/cs/rerank_top200_raw.pt",
+    "val_raw": "OUT/results/7b_val/cs/rerank_top200_val_raw.pt",
+    "test_ce": "OUT/results/v2/charm_v2p_test.pt",
+    "val_ce": "OUT/results/v2/charm_v2p_val.pt",
+    "agent": [
+      "star=OUT/results/v2/star_test.pt,OUT/results/v2/star_val.pt"
+    ],
+    "folds": 5,
+    "repeats": 3,
+    "epochs": 300,
+    "diversity_profiles": "OUT/results/bridge/profiles.json",
+    "out": "OUT/results/v2/maven_cv_pure.json"
+  },
+  "agents": [
+    "retriever",
+    "lm",
+    "charm",
+    "star"
+  ],
+  "cv": {
+    "static": {
+      "mean": 0.1831781417131424,
+      "se": 0.0037556972820311785
+    },
+    "gate beta=10": {
+      "mean": 0.18345023691654205,
+      "se": 0.003688530530780554
+    },
+    "gate beta=1": {
+      "mean": 0.1832725554704666,
+      "se": 0.0037558102048933506
+    },
+    "gate beta=0.1": {
+      "mean": 0.18426188826560974,
+      "se": 0.003812789684161544
+    },
+    "gate beta=0.01": {
+      "mean": 0.1823432743549347,
+      "se": 0.0034104245714843273
+    },
+    "gate beta=0": {
+      "mean": 0.18162086606025696,
+      "se": 0.003537977347150445
+    }
+  },
+  "chosen": "static",
+  "report": {
+    "MAVEN (CV-regularised)": {
+      "metrics": {
+        "standard": {
+          "n": 4975,
+          "pool_size": 6630,
+          "recall_at_1": 0.0878391959798995,
+          "ndcg_at_1": 0.0878391959798995,
+          "random_baseline_at_1": 0.00015082956259426848,
+          "recall_at_10": 0.30251256281407035,
+          "ndcg_at_10": 0.18130848782220496,
+          "random_baseline_at_10": 0.0015082956259426848,
+          "recall_at_50": 0.49809045226130655,
+          "ndcg_at_50": 0.22453685700976975,
+          "random_baseline_at_50": 0.007541478129713424,
+          "mrr": 0.15553229494797474,
+          "mrr_at_10": 0.14425157533700247,
+          "mean_rank": 601.1685427135678
+        },
+        "dedup": {
+          "n": 4329,
+          "pool_size": 6630,
+          "recall_at_1": 0.04712404712404712,
+          "ndcg_at_1": 0.04712404712404712,
+          "random_baseline_at_1": 0.00015082956259426848,
+          "recall_at_10": 0.24416724416724417,
+          "ndcg_at_10": 0.13004837748887496,
+          "random_baseline_at_10": 0.0015082956259426848,
+          "recall_at_50": 0.45622545622545624,
+          "ndcg_at_50": 0.17677635568740172,
+          "random_baseline_at_50": 0.007541478129713424,
+          "mrr": 0.10771863417263347,
+          "mrr_at_10": 0.09553692887026202,
+          "mean_rank": 656.9948024948025
+        }
+      },
+      "mean_weights": [
+        0.14586269855499268,
+        0.3701053261756897,
+        0.47086188197135925,
+        0.013170002028346062
+      ]
+    },
+    "MAVEN (CV-regularised) + CHARM diversity": {
+      "metrics": {
+        "standard": {
+          "n": 4975,
+          "pool_size": 6630,
+          "recall_at_1": 0.0878391959798995,
+          "ndcg_at_1": 0.0878391959798995,
+          "random_baseline_at_1": 0.00015082956259426848,
+          "recall_at_10": 0.3013065326633166,
+          "ndcg_at_10": 0.1811594080468167,
+          "random_baseline_at_10": 0.0015082956259426848,
+          "recall_at_50": 0.49809045226130655,
+          "ndcg_at_50": 0.22472856493165028,
+          "random_baseline_at_50": 0.007541478129713424,
+          "mrr": 0.15575888864375123,
+          "mrr_at_10": 0.14436428172609078,
+          "mean_rank": 601.1657286432161
+        },
+        "dedup": {
+          "n": 4329,
+          "pool_size": 6630,
+          "recall_at_1": 0.04712404712404712,
+          "ndcg_at_1": 0.04712404712404712,
+          "random_baseline_at_1": 0.00015082956259426848,
+          "recall_at_10": 0.243012243012243,
+          "ndcg_at_10": 0.12992751959109664,
+          "random_baseline_at_10": 0.0015082956259426848,
+          "recall_at_50": 0.45622545622545624,
+          "ndcg_at_50": 0.17698847427783376,
+          "random_baseline_at_50": 0.007541478129713424,
+          "mrr": 0.1079677810153912,
+          "mrr_at_10": 0.09567186233852885,
+          "mean_rank": 656.9904134904135
+        }
+      },
+      "lambda0": 0.1,
+      "ild_top10": {
+        "before": 0.9447621920365717,
+        "after": 0.946927733284478
+      }
+    }
+  }
+}

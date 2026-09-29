@@ -1,42 +1,17 @@
-# HARPO: Hierarchical Agentic Reasoning with Preference Optimization
-# Requirements for ACL 2025 Submission
-
-# Core ML (tested: torch 2.5.1+cu121 and 2.14, transformers 5.17.0, peft 0.21.0,
-# accelerate 1.10.1 and 1.15)
+# HARPO (ACL 2026). Tested with torch 2.5.1+cu121, transformers 5.17.0,
+# peft 0.21.0, accelerate 1.10.1, on A100 80 GB GPUs.
 torch>=2.5.1
 transformers==5.17.0
 peft==0.21.0
 accelerate>=1.10.1
-datasets
-tokenizers
-
-# Training
+safetensors
+huggingface_hub
 tqdm
-numpy
-scipy
 
-# Evaluation
-nltk
-rouge-score
+# tests
+pytest
 
-# Data Processing
-openai
-requests
-
-# APIs & CLI
-click>=8.0.0
-fastapi>=0.95.0
-uvicorn>=0.21.0
-pydantic>=2.0.0
-
-# Utilities
-pyyaml
-
-# Optional: Flash Attention 2 (for 2-3x speedup)
-# Requires CUDA and specific installation
-# pip install flash-attn --no-build-isolation
-
-# Optional: For development
-# pytest>=7.0.0
-# black>=23.0.0
-# isort>=5.12.0
+# optional: scripts/convert_redial.py --use-llm (the shipped data did not use it)
+# openai
+# optional: faster attention
+# flash-attn

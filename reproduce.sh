@@ -3,13 +3,14 @@
 # catalogue, all four modules, MAVEN weights chosen by cross-validation on
 # validation:  R@1 8.80 / R@10 30.45 / R@50 50.09 / NDCG@10 18.37 / MRR@10 14.65
 #
-#   RAW=/path/to/redial_raw OUT=/path/to/out bash reproduce.sh
+#   OUT=/path/to/out bash reproduce.sh
 #   (detached: setsid nohup bash reproduce.sh > reproduce.log 2>&1 < /dev/null &)
 #
 # DATA  converted ReDial: sft_data.json, test_sft.json, movie_list.json (sha256-checked)
 #                                             [data/redial_data.tar.gz, unpacked into OUT/data]
-# RAW   the original ReDial release (train_data.jsonl, test_data.jsonl): seeker answers
-#       for CHARM's satisfaction and engagement labels
+# RAW   the original ReDial release (train_data.jsonl, test_data.jsonl; sha256-checked):
+#       seeker answers for CHARM's satisfaction and engagement labels
+#                                             [downloaded from ReDial's release into OUT/redial_raw]
 # OUT   checkpoints, results, logs            [./harpo_out]
 # M05   Qwen2.5-0.5B-Instruct                  [Qwen/Qwen2.5-0.5B-Instruct]
 # M7    Qwen2.5-7B-Instruct                    [Qwen/Qwen2.5-7B-Instruct]
@@ -29,7 +30,7 @@ set -o pipefail
 cd "$(dirname "$0")" || exit 1
 OUT=$(mkdir -p "${OUT:-./harpo_out}" && cd "${OUT:-./harpo_out}" && pwd)
 DATA=${DATA:-$OUT/data/redial_data}
-RAW=${RAW:?set RAW to the original ReDial release (train_data.jsonl, test_data.jsonl)}
+RAW=${RAW:-$OUT/redial_raw}
 M05=${M05:-Qwen/Qwen2.5-0.5B-Instruct}
 M7=${M7:-Qwen/Qwen2.5-7B-Instruct}
 GPU0=${GPU0:-0}; GPU1=${GPU1:-1}
@@ -44,13 +45,19 @@ check_data() {
   if [ ! -d "$DATA" ] && [ "$DATA" = "$OUT/data/redial_data" ]; then
     mkdir -p "$OUT/data" && tar -xzf data/redial_data.tar.gz -C "$OUT/data" || return 1
   fi
+  if [ ! -f "$RAW/train_data.jsonl" ] || [ ! -f "$RAW/test_data.jsonl" ]; then
+    $PY -c "import sys; sys.path.insert(0, 'scripts')
+from convert_redial import download_redial_from_github as get; get('$RAW')" || return 1
+  fi
   sum() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
   while read -r want file; do
-    [ "$(sum "$DATA/$file")" = "$want" ] || { echo "!! $DATA/$file differs from the data the result used"; return 1; }
-  done <<'EOF'
-fcc1dc6889a8ca74dfc34219fbf922766c97bb83f385ef19aa53eddca43dabed sft_data.json
-73bf3cb74c90fa40311b83d03d97558a1a727c187a1f697b1e57e0667b26d63c test_sft.json
-fbc96491832a774824871ff256f5111b927579cd89006469796ca8d2dcf2eadf movie_list.json
+    [ "$(sum "$file")" = "$want" ] || { echo "!! $file differs from the data the result used"; return 1; }
+  done <<EOF
+fcc1dc6889a8ca74dfc34219fbf922766c97bb83f385ef19aa53eddca43dabed $DATA/sft_data.json
+73bf3cb74c90fa40311b83d03d97558a1a727c187a1f697b1e57e0667b26d63c $DATA/test_sft.json
+fbc96491832a774824871ff256f5111b927579cd89006469796ca8d2dcf2eadf $DATA/movie_list.json
+53dff9d8e3e175adf542635933ea1657d0108846ffb076cc54910e2497f4a89d $RAW/train_data.jsonl
+d7781750787d104ac005e829cc7e6277d25b14644a223b0c2445aaaded6b19ac $RAW/test_data.jsonl
 EOF
 }
 
