@@ -46,9 +46,6 @@ ReDial (Li et al., 2018), released under CC BY 4.0.
   GPT-4o-mini-written annotations (same dialogues and targets) exists but was
   not used for these results.
 
-## License
-
-Code: MIT (`LICENSE`). Data: ReDial, CC BY 4.0.
 
 ## Citation
 
@@ -60,12 +57,5 @@ Code: MIT (`LICENSE`). Data: ReDial, CC BY 4.0.
   year      = {2026},
   eprint    = {2604.10048},
   archivePrefix = {arXiv}
-}
-
-@inproceedings{li2018redial,
-  title     = {Towards Deep Conversational Recommendations},
-  author    = {Li, Raymond and Kahou, Samira Ebrahimi and Schulz, Hannes and Michalski, Vincent and Charlin, Laurent and Pal, Chris},
-  booktitle = {Advances in Neural Information Processing Systems 31},
-  year      = {2018}
 }
 ```
