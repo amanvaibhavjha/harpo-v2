@@ -18,6 +18,7 @@ validation history (`charm_stage2.json`).
 ## Reproduce
 
 ```bash
+conda create -n harpo python=3.10 -y && conda activate harpo
 pip install -r requirements.txt
 bash reproduce.sh
 ```
@@ -25,6 +26,10 @@ bash reproduce.sh
 The data ships in `data/` (see Data below) and is checksummed on every run.
 See the header of `reproduce.sh` for GPUs, models and resuming (about 27 h on
 one A100 80 GB).
+
+Prefer to run each stage yourself instead of the shell script (e.g. in a
+`harpo` conda env)? See [MANUAL_STEPS.md](MANUAL_STEPS.md) for the same
+pipeline unrolled into individual commands.
 
 ## Layout
 

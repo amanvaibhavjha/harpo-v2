@@ -3,6 +3,11 @@
 # catalogue, all four modules, MAVEN weights chosen by cross-validation on
 # validation:  R@1 8.80 / R@10 30.45 / R@50 50.09 / NDCG@10 18.37 / MRR@10 14.65
 #
+# This script does not create or manage any Python environment -- it just
+# runs whatever python/$PY is on PATH. Create and activate one first, e.g.:
+#   conda create -n harpo python=3.10 -y && conda activate harpo
+#   pip install -r requirements.txt
+#
 #   OUT=/path/to/out bash reproduce.sh
 #   (detached: setsid nohup bash reproduce.sh > reproduce.log 2>&1 < /dev/null &)
 #
