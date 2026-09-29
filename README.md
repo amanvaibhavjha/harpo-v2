@@ -51,11 +51,10 @@ ReDial (Li et al., 2018), released under CC BY 4.0.
 
 ```bibtex
 @inproceedings{raj2026harpo,
-  title     = {{HARPO}: Hierarchical Agentic Reasoning for User-Aligned Conversational Recommendation},
-  author    = {Raj, Subham and Jha, Aman Vaibhav and Anand, Mayank and Saha, Sriparna},
-  booktitle = {Proceedings of ACL 2026},
-  year      = {2026},
-  eprint    = {2604.10048},
-  archivePrefix = {arXiv}
+  title={HARPO: Hierarchical Agentic Reasoning for User-Aligned Conversational Recommendation},
+  author={Raj, Subham and Jha, Aman Vaibhav and Anand, Mayank and Saha, Sriparna},
+  booktitle={Proceedings of the 64th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)},
+  pages={35580--35599},
+  year={2026}
 }
 ```
