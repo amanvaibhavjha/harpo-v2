@@ -82,18 +82,44 @@ def main():
                 "dedup": metrics_from_ranks(r[dd].tolist(), d["pool"], (1, 10, 50))}
 
     # ---- cross-validation on validation conversations
+    # Checkpointed per (rep, fold) group (6 candidates each): a state file next
+    # to --out tracks which groups are already scored, so a killed/interrupted
+    # run resumes instead of redoing all `repeats * folds` groups. Fold
+    # assignment is a deterministic hash of (rep, conversation id), so it is
+    # identical across runs and safe to resume into.
     rows = torch.arange(len(conv))
+    state_path = args.out + ".cv_state.json"
     scores = {name: [] for name, _ in CANDIDATES}
+    done = set()
+    if os.path.exists(state_path):
+        with open(state_path) as f:
+            saved = json.load(f)
+        if saved.get("repeats") == args.repeats and saved.get("folds") == args.folds:
+            scores = saved["scores"]
+            done = {tuple(x) for x in saved["done"]}
+            print(f"resuming CV from {state_path}: {len(done)}/{args.repeats * args.folds} "
+                  f"(rep, fold) groups already done", flush=True)
+        else:
+            print(f"ignoring {state_path}: --repeats/--folds differ from this run", flush=True)
+
+    total_groups = args.repeats * args.folds
     for rep in range(args.repeats):
         fold = torch.tensor([int(hashlib.md5(f"maven-cv{rep}:{c}".encode()).hexdigest(), 16) % args.folds
                              for c in conv])
         for k in range(args.folds):
+            if (rep, k) in done:
+                continue
             train, held = rows[fold != k], rows[fold == k]
             for name, beta in CANDIDATES:
                 model = fitted(beta, train)
                 with torch.no_grad():
                     fused, _ = model(z_v[held], f_v[held])
                 scores[name].append(metrics(fused, val, held)["standard"]["mrr"])
+            done.add((rep, k))
+            print(f"  CV group {len(done)}/{total_groups} (rep={rep} fold={k}) done", flush=True)
+            with open(state_path, "w") as f:
+                json.dump({"repeats": args.repeats, "folds": args.folds,
+                           "scores": scores, "done": sorted(done)}, f)
     table = {}
     for name, _ in CANDIDATES:
         x = torch.tensor(scores[name])
@@ -140,6 +166,8 @@ def main():
         json.dump({"args": vars(args), "agents": names, "cv": table, "chosen": chosen,
                    "report": report}, f, indent=2)
     print(f"wrote {args.out}")
+    if os.path.exists(state_path):
+        os.remove(state_path)
 
 
 if __name__ == "__main__":
