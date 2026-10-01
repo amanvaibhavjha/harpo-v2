@@ -9,3 +9,4 @@ outputs/
 *.safetensors
 *.log
 .DS_Store
+*.pdf
