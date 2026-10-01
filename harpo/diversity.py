@@ -70,10 +70,10 @@ def mmr_rerank(scores: torch.Tensor, items: torch.Tensor, vecs: torch.Tensor,
     rel = (s_top - lo) / (hi - lo).clamp(min=1e-6)                      # [0, 1] per row
     v = vecs[items.gather(1, order)]                                     # [N, L, V]
     sim = torch.bmm(v, v.transpose(1, 2))                                # [N, L, L]
-    max_sim = torch.zeros(n, top)
-    taken = torch.zeros(n, top, dtype=torch.bool)
-    rank_of = torch.zeros(n, top)
-    rows = torch.arange(n)
+    max_sim = torch.zeros(n, top, device=scores.device)
+    taken = torch.zeros(n, top, dtype=torch.bool, device=scores.device)
+    rank_of = torch.zeros(n, top, device=scores.device)
+    rows = torch.arange(n, device=scores.device)
     for step in range(top):
         mmr = rel - lam[:, None].float() * max_sim
         mmr[taken] = -float("inf")
@@ -91,7 +91,7 @@ def intra_list_diversity(items: torch.Tensor, scores: torch.Tensor, vecs: torch.
                          k: int = 10) -> float:
     """Mean pairwise (1 - cosine) among each row's top-``k`` items."""
     top = items.gather(1, scores.argsort(dim=1, descending=True)[:, :k])
-    off = ~torch.eye(k, dtype=torch.bool)
+    off = ~torch.eye(k, dtype=torch.bool, device=scores.device)
     total = 0.0
     for i in range(0, top.size(0), 512):
         v = vecs[top[i:i + 512]]

@@ -54,10 +54,24 @@ def main():
                              ranks_from_scores, zrow)
     from harpo.ranking import metrics_from_ranks
 
+    # This is all small-tensor CPU work by construction (no .cuda() anywhere in
+    # this module), which left an idle GPU doing nothing for a stage that, in
+    # practice, took hours of wall-clock time. Move it to GPU when available.
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"device: {device}", flush=True)
+
+    def to_device(d):
+        for key, v in d.items():
+            if isinstance(v, torch.Tensor):
+                d[key] = v.to(device)
+            elif isinstance(v, dict):
+                to_device(v)
+        return d
+
     torch.manual_seed(0)
     extras = [(s.split("=", 1)[0], *s.split("=", 1)[1].split(",")) for s in args.agent]
-    test = load_agent_scores(args.test_raw, args.test_ce, [(n, t) for n, t, _ in extras])
-    val = load_agent_scores(args.val_raw, args.val_ce, [(n, v) for n, _, v in extras])
+    test = to_device(load_agent_scores(args.test_raw, args.test_ce, [(n, t) for n, t, _ in extras]))
+    val = to_device(load_agent_scores(args.val_raw, args.val_ce, [(n, v) for n, _, v in extras]))
     names = list(test["agents"])
     conv = torch.load(args.val_raw)["conversation_ids"]
 
@@ -69,13 +83,13 @@ def main():
     z_t, f_t = tensors(test)
 
     def fitted(beta, idx):
-        model = MAVENConsensus(len(names), f_v.size(1), gated=beta is not None)
+        model = MAVENConsensus(len(names), f_v.size(1), gated=beta is not None).to(device)
         fit(model, z_v[idx], f_v[idx], val["target_pos"][idx], epochs=args.epochs,
             gate_l2=beta or 0.0)
         return model
 
     def metrics(fused, d, idx=None):
-        idx = torch.arange(fused.size(0)) if idx is None else idx
+        idx = torch.arange(fused.size(0), device=fused.device) if idx is None else idx
         r = ranks_from_scores(fused, d["target_pos"][idx], d["retr_rank"][idx])
         dd = d["dedup"][idx]
         return {"standard": metrics_from_ranks(r.tolist(), d["pool"], (1, 10, 50)),
@@ -87,7 +101,7 @@ def main():
     # run resumes instead of redoing all `repeats * folds` groups. Fold
     # assignment is a deterministic hash of (rep, conversation id), so it is
     # identical across runs and safe to resume into.
-    rows = torch.arange(len(conv))
+    rows = torch.arange(len(conv), device=device)
     state_path = args.out + ".cv_state.json"
     scores = {name: [] for name, _ in CANDIDATES}
     done = set()
@@ -105,7 +119,7 @@ def main():
     total_groups = args.repeats * args.folds
     for rep in range(args.repeats):
         fold = torch.tensor([int(hashlib.md5(f"maven-cv{rep}:{c}".encode()).hexdigest(), 16) % args.folds
-                             for c in conv])
+                             for c in conv], device=device)
         for k in range(args.folds):
             if (rep, k) in done:
                 continue
@@ -145,7 +159,7 @@ def main():
         from harpo.diversity import intra_list_diversity, mmr_rerank, profile_vectors, uncertainty
 
         with open(args.diversity_profiles) as f:
-            vecs = profile_vectors(test["catalog"], json.load(f))
+            vecs = profile_vectors(test["catalog"], json.load(f)).to(device)
         u_v, u_t = uncertainty(fused_v), uncertainty(fused_t)
         lam = max((0.0, 0.05, 0.1, 0.2, 0.3, 0.5), key=lambda l: metrics(
             mmr_rerank(fused_v, val["top_idx"], vecs, l * u_v), val)["standard"]["mrr"])
