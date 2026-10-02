@@ -10,3 +10,4 @@ outputs/
 *.log
 .DS_Store
 *.pdf
+results*
