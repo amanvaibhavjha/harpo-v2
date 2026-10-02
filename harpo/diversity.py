@@ -1,24 +1,33 @@
 """
-CHARM's fourth dimension, diversity: a property of the recommended list rather
-than of one candidate, so it acts after the agents are fused.
+CHARM's fourth dimension, diversity.
 
-The top of the fused list is re-ranked by maximal marginal relevance (MMR):
-each next pick trades its (normalised) score against its similarity to the
-movies already placed above it. How strongly depends on the dialogue -- a vague
-request (a flat fused distribution) spreads the list over different kinds of
-movie, a precise one keeps the ranking:
+Two distinct uses, both driven by the same TF-IDF similarity of BRIDGE
+profiles (genre, era and tone words):
 
-    lambda(dialogue) = lambda0 * H(softmax(fused)) / log K
+1. At inference, over the whole fused list (a property of the list, not of
+   one candidate): the top is re-ranked by maximal marginal relevance (MMR),
+   each next pick trading its (normalised) score against its similarity to
+   the movies already placed above it. How strongly depends on the dialogue
+   -- a vague request (a flat fused distribution) spreads the list over
+   different kinds of movie, a precise one keeps the ranking:
 
-with lambda0 chosen on validation (0, no diversity, is always a candidate).
-Similarity is the cosine of TF-IDF vectors of the BRIDGE profiles, so genre,
-era and tone words drive it.
+       lambda(dialogue) = lambda0 * H(softmax(fused)) / log K
+
+   with lambda0 chosen on validation (0, no diversity, is always a candidate).
+
+2. At CHARM training, a per-candidate *proxy* target (`dialogue_diversity_target`)
+   for its diversity head: how dissimilar the one movie actually recommended
+   was from what the dialogue had already discussed. This is necessarily an
+   approximation -- CHARM's other heads (relevance, satisfaction, engagement)
+   score one candidate against the dialogue, which has a natural per-candidate
+   meaning; diversity does not, so training it needs some per-candidate stand-in
+   for the list-level property the head is meant to capture.
 """
 
 import math
 import re
 from collections import Counter
-from typing import Dict, Sequence
+from typing import Dict, Optional, Sequence
 
 import torch
 
@@ -41,6 +50,24 @@ def profile_vectors(titles: Sequence[str], profiles: Dict[str, str], min_df: int
             if j is not None:
                 vecs[i, j] = c * math.log(n / df[w])
     return torch.nn.functional.normalize(vecs, dim=-1)
+
+
+def dialogue_diversity_target(candidate_idx: int, history_idx: Sequence[int],
+                              vecs: torch.Tensor) -> Optional[float]:
+    """CHARM diversity-head training target for one (dialogue, candidate) pair.
+
+    1 minus the mean cosine similarity between the candidate's BRIDGE profile
+    and the profiles of movies already mentioned earlier in the *same*
+    dialogue: 0 if it reads like what was already discussed, 1 if unrelated.
+    None if the dialogue has not mentioned any movie yet -- nothing to be
+    diverse from, so the example carries no diversity signal and should be
+    dropped from the loss, the same way a missing satisfaction/engagement
+    label is.
+    """
+    if not history_idx:
+        return None
+    sims = vecs[list(history_idx)] @ vecs[candidate_idx]
+    return float((1.0 - sims.mean()).clamp(0.0, 1.0))
 
 
 def uncertainty(scores: torch.Tensor) -> torch.Tensor:

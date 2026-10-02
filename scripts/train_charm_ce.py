@@ -95,6 +95,14 @@ def binary_auc(scores, labels):
     return float(greater.mean())
 
 
+def pearson(scores, targets):
+    """Pearson correlation of ``scores`` against continuous ``targets`` (0 if too few/no spread)."""
+    x, y = torch.as_tensor(scores, dtype=torch.float), torch.as_tensor(targets, dtype=torch.float)
+    if len(x) < 2 or x.std() < 1e-6 or y.std() < 1e-6:
+        return 0.0
+    return float(torch.corrcoef(torch.stack([x, y]))[0, 1])
+
+
 def compute_shortlists(model, catalog, rows, index, device, top_k, seq_len):
     """Retriever top-K for each row, plus what evaluation needs."""
     from run_experiment import encode_test_contexts
@@ -159,12 +167,15 @@ def main():
     parser.add_argument("--val-limit", type=int, default=0, help="smoke tests only")
     parser.add_argument("--init-adapter", default=None,
                         help="continue training from a saved charm_ce_adapter")
-    parser.add_argument("--heads", type=int, default=1, choices=[1, 3],
-                        help="3: relevance + satisfaction + engagement, mixed by a dialogue gate")
+    parser.add_argument("--heads", type=int, default=1, choices=[1, 3, 4],
+                        help="3: relevance + satisfaction + engagement; 4: + diversity "
+                             "(requires --profiles), mixed by a dialogue gate")
     parser.add_argument("--labels", default=None,
                         help="scripts/redial_labels.py output (satisfaction/engagement targets)")
     parser.add_argument("--aux-weight", type=float, default=0.2,
                         help="weight of the satisfaction and engagement losses")
+    parser.add_argument("--diversity-weight", type=float, default=0.2,
+                        help="weight of the diversity head's loss (--heads 4)")
     parser.add_argument("--summaries", default=None,
                         help="scripts/pref_summaries.py outputs, comma-separated")
     parser.add_argument("--profiles", default=None, help="BRIDGE profiles appended to candidates")
@@ -290,6 +301,45 @@ def main():
               if args.strata else None)
     conv_movies = conversation_movies(rows["train"], index) if args.denoise else {}
 
+    # Diversity has no per-candidate ground truth (it's a property of the whole
+    # recommended list -- see harpo/diversity.py), so its training target is a
+    # proxy: how dissimilar the movie actually recommended was from what the
+    # dialogue had already discussed, by BRIDGE-profile similarity. None (and so
+    # excluded from the loss, like a missing satisfaction/engagement label) for
+    # a dialogue's first recommendation, which has no prior movie to compare to.
+    #
+    # Uses its own conversation-movies map rather than `conv_movies` above:
+    # that one is left empty unless --denoise is set (it also drives which
+    # movies are excluded from negative sampling), and populating it here too
+    # would silently turn on denoise-style exclusion as a side effect of
+    # --heads 4, whether or not --denoise was actually requested.
+    diversity_targets = {}
+    diversity_target_of = None
+    if args.heads == 4:
+        if not profiles:
+            raise SystemExit("--heads 4 needs --profiles: the diversity head's training "
+                             "target is computed from BRIDGE profile similarity")
+        from harpo.diversity import dialogue_diversity_target, profile_vectors
+        profile_vecs = profile_vectors(catalog_list, profiles)
+        # Covers val/test conversations too, for the evaluation diagnostic below.
+        div_conv_movies = conversation_movies(
+            rows["train"] + rows["val"] + rows["test"], index)
+
+        def diversity_target_of(r):
+            tgt = index[str(r["ground_truth_item"]).lower()]
+            conv_id = str(r.get("conversation_id"))
+            history = sorted((div_conv_movies.get(conv_id, set())
+                              - later_movies(div_conv_movies, r, catalog_list)) - {tgt})
+            return dialogue_diversity_target(tgt, history, profile_vecs)
+
+        diversity_targets = {i: diversity_target_of(r) for i, r in enumerate(rows["train"])}
+        covered = sum(1 for v in diversity_targets.values() if v is not None)
+        print(f"  diversity: {covered} training cases with dialogue history "
+              f"({100 * covered / max(len(rows['train']), 1):.1f}%)", flush=True)
+
+    def diversity_of(i):
+        return diversity_targets.get(i)
+
     ce = CrossEncoderCHARM(args.base_model, device, lora_r=args.lora_r,
                            lora_alpha=2 * args.lora_r, max_length=args.max_length,
                            dtype=getattr(torch, args.dtype), heads=args.heads,
@@ -341,6 +391,12 @@ def main():
                        for i, r in enumerate(rs) if int(feats["target_pos"][i]) >= 0]
                 got = [(x, y) for x, y in got if y is not None]
                 diag[f"auc_{key}"] = round(binary_auc([x for x, _ in got], [y for _, y in got]), 4)
+            if args.heads == 4:  # diversity: continuous target, so correlation not AUC
+                got = [(float(dims[slot[r["input"]], int(feats["target_pos"][i]), 3]),
+                        diversity_target_of(r))
+                       for i, r in enumerate(rs) if int(feats["target_pos"][i]) >= 0]
+                got = [(x, y) for x, y in got if y is not None]
+                diag["corr_diversity"] = round(pearson([x for x, _ in got], [y for _, y in got]), 4)
         out = {}
         for w in WEIGHTS:
             ranks = fused_ranks(feats["retriever"], ce_scores, w, feats["target_pos"],
@@ -438,6 +494,15 @@ def main():
                         y = torch.tensor([float(ys[n]) for n in keep], device=dims.device)
                         pw = torch.tensor(pos_weight[key], device=dims.device)
                         loss = loss + args.aux_weight * bce(dims[keep, 0, d_i], y, pos_weight=pw)
+            if args.heads == 4:
+                # Diversity of the suggested movie (group slot 0) against the
+                # dialogue's history; a continuous [0, 1] target, so BCE here is
+                # a proper scoring rule rather than a 0/1 classification loss.
+                ys = [diversity_of(i) for i in batch]
+                keep = [n for n, y in enumerate(ys) if y is not None]
+                if keep:
+                    y = torch.tensor([ys[n] for n in keep], device=dims.device)
+                    loss = loss + args.diversity_weight * bce(dims[keep, 0, 3], y)
             opt.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(ce.adapter_parameters() + ce.head_parameters(), 1.0)

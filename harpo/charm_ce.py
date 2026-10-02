@@ -8,12 +8,15 @@ attends to every dialogue token.
   * It never sees the retriever's score, so a missed positive inserted into a
     training group is harmless.
   * Dimensions (``heads``): relevance (is this what the recommender suggests
-    now), satisfaction (will the seeker like it; ReDial's own "liked" answers)
-    and engagement (will the seeker take it up; the next seeker turns). A gate
-    reads the dialogue and mixes them per conversation:
+    now), satisfaction (will the seeker like it; ReDial's own "liked" answers),
+    engagement (will the seeker take it up; the next seeker turns) and,
+    optionally, diversity (``heads=4``; dissimilarity to what the dialogue has
+    already discussed -- a per-candidate proxy, see harpo/diversity.py's
+    ``dialogue_diversity_target``, for a property that is really the whole
+    list's). A gate reads the dialogue and mixes them per conversation:
     ``score = sum_d w_d(dialogue) * s_d``. ``heads=1`` is relevance alone
-    (training stage 1). Diversity, a property of the whole list, lives in
-    harpo/diversity.py.
+    (training stage 1). The post-hoc, list-level diversity re-ranking
+    (``mmr_rerank``) in harpo/diversity.py is separate and unaffected by this.
   * Inputs: a preference reading appended to the dialogue ("Seeker wants: ..."),
     which is also how STAR's search steers CHARM; optionally a BRIDGE profile
     appended to each candidate.
@@ -277,27 +280,38 @@ class CrossEncoderCHARM:
     def load_adapter(self, path: str) -> None:
         """Load a trained adapter + score head (+ gate) saved by :meth:`save`.
 
-        A one-head (stage-1) adapter loads into a multi-head model as its
-        relevance head; the other heads start at zero, so the starting ranking is
-        stage 1's (copies of the relevance row would make the satisfaction and
-        engagement losses push the answer's relevance down through the shared
-        adapter).
+        A saved adapter with fewer heads than this model loads into the first
+        rows of each head/gate tensor; the new heads start at zero, so the
+        starting ranking and gate mix are exactly the saved adapter's (a copy
+        of an existing row would make the new head's loss push that head's
+        own ranking around through the shared adapter). Covers both the
+        original 1 -> 3 warm start and 3 -> 4 (adding diversity).
         """
         from peft import set_peft_model_state_dict
         from safetensors.torch import load_file
         weights = load_file(os.path.join(path, "adapter_model.safetensors"))
         for k, v in list(weights.items()):
             if "score" in k and v.dim() >= 1 and v.size(0) != self.heads:
-                if v.size(0) != 1:
+                if v.size(0) > self.heads:
                     raise ValueError(f"{k}: {v.size(0)} dimensions saved, model has {self.heads}")
-                weights[k] = torch.cat([v, v.new_zeros(self.heads - 1, *v.shape[1:])])
+                weights[k] = torch.cat([v, v.new_zeros(self.heads - v.size(0), *v.shape[1:])])
         result = set_peft_model_state_dict(self.model, weights)
         missing = [k for k in getattr(result, "unexpected_keys", []) or []]
         if missing:
             raise ValueError(f"adapter keys not in the model: {missing[:5]}")
         gate_file = os.path.join(path, "charm_gate.pt")
         if self.gate is not None and os.path.exists(gate_file):
-            self.gate.load_state_dict(torch.load(gate_file, map_location=self.device))
+            saved = torch.load(gate_file, map_location=self.device)
+            n = saved["weight"].size(0)
+            if n != self.heads:
+                if n > self.heads:
+                    raise ValueError(f"charm_gate.pt: {n} heads saved, model has {self.heads}")
+                pad_h = self.heads - n
+                saved = {
+                    "weight": torch.cat([saved["weight"], saved["weight"].new_zeros(pad_h, saved["weight"].size(1))]),
+                    "bias": torch.cat([saved["bias"], saved["bias"].new_zeros(pad_h)]),
+                }
+            self.gate.load_state_dict(saved)
         for p in self.head_parameters():
             p.data = p.data.float()
 

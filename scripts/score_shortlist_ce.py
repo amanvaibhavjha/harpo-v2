@@ -106,7 +106,8 @@ def main():
           f"in {(time.time() - start) / 60:.1f} min")
     # Write then rename, so a queue polling for the file never reads half of it.
     if ce.heads > 1:
-        print(f"mean gate weights (relevance, satisfaction, engagement): "
+        dim_names = ["relevance", "satisfaction", "engagement", "diversity"][:ce.heads]
+        print(f"mean gate weights ({', '.join(dim_names)}): "
               f"{[round(x, 3) for x in gate.mean(0).tolist()]}")
     torch.save({"scores": scores, "dims": dims.half(), "gate": gate, "targets": targets,
                 "adapter": args.adapter}, args.out + ".partial")

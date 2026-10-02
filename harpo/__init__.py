@@ -3,8 +3,9 @@ HARPO: agentic conversational recommendation.
 
   retriever  two-tower retrieval over the full catalogue, with cold-start item
              vectors (model.py, training.py, retrieval.py, coldstart.py)
-  CHARM      cross-encoder re-ranker: relevance, satisfaction and engagement heads
-             mixed by a dialogue gate (charm_ce.py), plus list diversity (diversity.py)
+  CHARM      cross-encoder re-ranker: relevance, satisfaction and engagement
+             heads (optionally + a diversity head, --heads 4) mixed by a
+             dialogue gate (charm_ce.py), plus post-hoc list diversity (diversity.py)
   STAR       value-guided tree search over readings of the seeker's wishes
              (star.py, star_search.py)
   BRIDGE     LLM-written item profiles, read by CHARM and by the diversity step
